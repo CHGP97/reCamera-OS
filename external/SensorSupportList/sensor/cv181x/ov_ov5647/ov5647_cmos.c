@@ -4,15 +4,9 @@
 #include <assert.h>
 #include <syslog.h>
 #include <errno.h>
-#ifdef ARCH_CV182X
-#include "cvi_type.h"
-#include "cvi_comm_video.h"
-#include <linux/cvi_vip_snsr.h>
-#else
+
 #include <linux/cvi_type.h>
 #include <linux/cvi_comm_video.h>
-#include <linux/vi_snsr.h>
-#endif
 #include "cvi_debug.h"
 #include "cvi_comm_sns.h"
 #include "cvi_sns_ctrl.h"
@@ -72,6 +66,7 @@ static CVI_S32 cmos_get_wdr_size(VI_PIPE ViPipe, ISP_SNS_ISP_INFO_S *pstIspCfg);
 #define OV5647_VTS_ADDR		0x380E
 
 #define OV5647_RES_IS_1080P(w, h)      ((w) == 1920 && (h) == 1080)
+#define OV5647_RES_IS_5MP(w, h)        ((w) == 2592 && (h) == 1944)
 
 static CVI_S32 cmos_get_ae_default(VI_PIPE ViPipe, AE_SENSOR_DEFAULT_S *pstAeSnsDft)
 {
@@ -86,7 +81,7 @@ static CVI_S32 cmos_get_ae_default(VI_PIPE ViPipe, AE_SENSOR_DEFAULT_S *pstAeSns
 	pstAeSnsDft->u32FullLinesStd = pstSnsState->u32FLStd;
 	pstAeSnsDft->u32FlickerFreq = 50 * 256;
 	pstAeSnsDft->u32FullLinesMax = OV5647_FULL_LINES_MAX;
-	pstAeSnsDft->u32HmaxTimes = (1000000) / (pstSnsState->u32FLStd * 30);
+	pstAeSnsDft->u32HmaxTimes = (1000000) / (pstSnsState->u32FLStd * pstMode->f32MaxFps);
 
 	pstAeSnsDft->stIntTimeAccu.enAccuType = AE_ACCURACY_LINEAR;
 	pstAeSnsDft->stIntTimeAccu.f32Accuracy = 1;
@@ -103,7 +98,7 @@ static CVI_S32 cmos_get_ae_default(VI_PIPE ViPipe, AE_SENSOR_DEFAULT_S *pstAeSns
 	pstAeSnsDft->u32MaxISPDgainTarget = 2 << pstAeSnsDft->u32ISPDgainShift;
 
 	if (g_au32LinesPer500ms[ViPipe] == 0)
-		pstAeSnsDft->u32LinesPer500ms = pstSnsState->u32FLStd * 30 / 2;
+		pstAeSnsDft->u32LinesPer500ms = pstSnsState->u32FLStd * pstMode->f32MaxFps / 2;
 	else
 		pstAeSnsDft->u32LinesPer500ms = g_au32LinesPer500ms[ViPipe];
 	pstAeSnsDft->u32SnsStableFrame = 0;
@@ -167,6 +162,7 @@ static CVI_S32 cmos_fps_set(VI_PIPE ViPipe, CVI_FLOAT f32Fps, AE_SENSOR_DEFAULT_
 
 	switch (pstSnsState->u8ImgMode) {
 	case OV5647_MODE_1920X1080P30:
+	case OV5647_MODE_2592X1944P15:
 		if ((f32Fps <= f32MaxFps) && (f32Fps >= f32MinFps)) {
 			u32VMAX = u32Vts * f32MaxFps / DIV_0_TO_1_FLOAT(f32Fps);
 		} else {
@@ -472,7 +468,7 @@ static CVI_S32 cmos_set_wdr_mode(VI_PIPE ViPipe, CVI_U8 u8Mode)
 
 	switch (u8Mode) {
 	case WDR_MODE_NONE:
-		pstSnsState->u8ImgMode = OV5647_MODE_1920X1080P30;
+		/* keep the image mode selected by cmos_set_image_mode/sensor_global_init */
 		pstSnsState->enWDRMode = WDR_MODE_NONE;
 		pstSnsState->u32FLStd = g_astOv5647_mode[pstSnsState->u8ImgMode].u32VtsDef;
 		syslog(LOG_INFO, "linear mode\n");
@@ -600,6 +596,8 @@ static CVI_S32 cmos_set_image_mode(VI_PIPE ViPipe, ISP_CMOS_SENSOR_IMAGE_MODE_S 
 		if (pstSnsState->enWDRMode == WDR_MODE_NONE) {
 			if (OV5647_RES_IS_1080P(pstSensorImageMode->u16Width, pstSensorImageMode->u16Height))
 				u8SensorImageMode = OV5647_MODE_1920X1080P30;
+			else if (OV5647_RES_IS_5MP(pstSensorImageMode->u16Width, pstSensorImageMode->u16Height))
+				u8SensorImageMode = OV5647_MODE_2592X1944P15;
 			else {
 				CVI_TRACE_SNS(CVI_DBG_ERR, "Not support! Width:%d, Height:%d, Fps:%f, WDRMode:%d\n",
 				       pstSensorImageMode->u16Width,
@@ -653,7 +651,6 @@ static CVI_VOID sensor_global_init(VI_PIPE ViPipe)
 	pstSnsState->u32FLStd  = g_astOv5647_mode[pstSnsState->u8ImgMode].u32VtsDef;
 	pstSnsState->au32FL[0] = g_astOv5647_mode[pstSnsState->u8ImgMode].u32VtsDef;
 	pstSnsState->au32FL[1] = g_astOv5647_mode[pstSnsState->u8ImgMode].u32VtsDef;
-	g_aeOv5647_MirrorFip[ViPipe] = 0;
 
 	memset(&pstSnsState->astSyncInfo[0], 0, sizeof(ISP_SNS_SYNC_INFO_S));
 	memset(&pstSnsState->astSyncInfo[1], 0, sizeof(ISP_SNS_SYNC_INFO_S));
@@ -668,6 +665,13 @@ static CVI_S32 sensor_rx_attr(VI_PIPE ViPipe, SNS_COMBO_DEV_ATTR_S *pstRxAttr)
 	CMOS_CHECK_POINTER(pstRxAttr);
 
 	memcpy(pstRxAttr, &ov5647_rx_attr, sizeof(*pstRxAttr));
+
+	/* the 5M mode's PLL table is designed for a 25MHz xvclk (mainline Linux
+	 * driver); the 1080p table expects the 24MHz default */
+	if (pstSnsState->u8ImgMode == OV5647_MODE_2592X1944P15)
+		pstRxAttr->mclk.freq = CAMPLL_FREQ_25M;
+	else
+		pstRxAttr->mclk.freq = CAMPLL_FREQ_24M;
 
 	pstRxAttr->img_size.width = g_astOv5647_mode[pstSnsState->u8ImgMode].astImg[0].stSnsSize.u32Width;
 	pstRxAttr->img_size.height = g_astOv5647_mode[pstSnsState->u8ImgMode].astImg[0].stSnsSize.u32Height;

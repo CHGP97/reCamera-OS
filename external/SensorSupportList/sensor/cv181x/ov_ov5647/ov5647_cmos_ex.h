@@ -7,15 +7,8 @@ extern "C" {
 #endif
 #endif
 
-#ifdef ARCH_CV182X
-#include <linux/cvi_vip_cif.h>
-#include <linux/cvi_vip_snsr.h>
-#include "cvi_type.h"
-#else
-#include <linux/cif_uapi.h>
-#include <linux/vi_snsr.h>
+
 #include <linux/cvi_type.h>
-#endif
 #include "cvi_sns_ctrl.h"
 
 
@@ -32,6 +25,7 @@ enum ov5647_linear_regs_e {
 
 typedef enum _OV5647_MODE_E {
 	OV5647_MODE_1920X1080P30 = 0,
+	OV5647_MODE_2592X1944P15,
 	OV5647_MODE_LINEAR_NUM,
 	OV5647_MODE_NUM
 } OV5647_MODE_E;

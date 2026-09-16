@@ -7,15 +7,7 @@ extern "C" {
 #endif
 #endif
 
-#ifdef ARCH_CV182X
-#include <linux/cvi_vip_cif.h>
-#include <linux/cvi_vip_snsr.h>
-#include "cvi_type.h"
-#else
-#include <linux/cif_uapi.h>
-#include <linux/vi_snsr.h>
 #include <linux/cvi_type.h>
-#endif
 #include "cvi_sns_ctrl.h"
 #include "ov5647_cmos_ex.h"
 
@@ -62,6 +54,48 @@ static const OV5647_MODE_S g_astOv5647_mode[OV5647_MODE_NUM] = {
 			.u32Step = 1,
 		},
 	},
+	[OV5647_MODE_2592X1944P15] = {
+		.name = "2592x1944p15",
+		.astImg[0] = {
+			.stSnsSize = {
+				.u32Width = 2592,
+				.u32Height = 1944,
+			},
+			.stWndRect = {
+				.s32X = 0,
+				.s32Y = 0,
+				.u32Width = 2592,
+				.u32Height = 1944,
+			},
+			.stMaxSize = {
+				.u32Width = 2592,
+				.u32Height = 1944,
+			},
+		},
+
+		.f32MaxFps = 15,
+		.f32MinFps = 0.45, /* 0x7b0 * 15 / 0xFFFF */
+		.u32HtsDef = 2844,
+		.u32VtsDef = 1968,
+		.stExp[0] = {
+			.u16Min = 4,
+			.u16Max = 1968 - 4,
+			.u16Def = 400,
+			.u16Step = 1,
+		},
+		.stAgain[0] = {
+			.u32Min = 1024,
+			.u32Max = 63448,
+			.u32Def = 1024,
+			.u32Step = 1,
+		},
+		.stDgain[0] = {
+			.u32Min = 1024,
+			.u32Max = 1024,
+			.u32Def = 1024,
+			.u32Step = 1,
+		},
+	},
 };
 
 static ISP_CMOS_BLACK_LEVEL_S g_stIspBlcCalibratio = {
@@ -70,9 +104,6 @@ static ISP_CMOS_BLACK_LEVEL_S g_stIspBlcCalibratio = {
 		.Enable = 1,
 		.enOpType = OP_TYPE_AUTO,
 		.stManual = {60, 60, 60, 60, 0, 0, 0, 0
-#ifdef ARCH_CV182X
-			, 1039, 1039, 1039, 1039
-#endif
 		},
 		.stAuto = {
 			{60, 60, 60, 60, 60, 60, 60, 60, /*8*/60, 60, 60, 60, 60, 60, 60, 60},
@@ -83,16 +114,6 @@ static ISP_CMOS_BLACK_LEVEL_S g_stIspBlcCalibratio = {
 			{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 			{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 			{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-#ifdef ARCH_CV182X
-			{1039, 1039, 1039, 1039, 1039, 1039, 1039, 1039,
-				/*8*/1039, 1039, 1039, 1039, 1204, 1039, 1039, 1039},
-			{1039, 1039, 1039, 1039, 1039, 1039, 1039, 1039,
-				/*8*/1039, 1039, 1039, 1039, 1204, 1039, 1039, 1039},
-			{1039, 1039, 1039, 1039, 1039, 1039, 1039, 1039,
-				/*8*/1039, 1039, 1039, 1039, 1204, 1039, 1039, 1039},
-			{1039, 1039, 1039, 1039, 1039, 1039, 1039, 1039,
-				/*8*/1039, 1039, 1039, 1039, 1204, 1039, 1039, 1039},
-#endif
 		},
 	},
 };
@@ -100,7 +121,7 @@ static ISP_CMOS_BLACK_LEVEL_S g_stIspBlcCalibratio = {
 
 struct combo_dev_attr_s ov5647_rx_attr = {
 	.input_mode = INPUT_MODE_MIPI,
-	.mac_clk = RX_MAC_CLK_400M,
+	.mac_clk = RX_MAC_CLK_600M,
 	.mipi_attr = {
 		.raw_data_type = RAW_DATA_10BIT,
 		.lane_id = {0, 1, 2, -1, -1},
@@ -108,7 +129,7 @@ struct combo_dev_attr_s ov5647_rx_attr = {
 		.wdr_mode = CVI_MIPI_WDR_MODE_NONE,
 		.dphy = {
 			.enable = 1,
-			.hs_settle = 8,
+			.hs_settle = 5,
 		},
 	},
 	.mclk = {

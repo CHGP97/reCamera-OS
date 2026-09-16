@@ -7,17 +7,13 @@
 #include <unistd.h>
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
-#ifdef ARCH_CV182X
-#include <linux/cvi_vip_snsr.h>
-#include "cvi_comm_video.h"
-#else
-#include <linux/vi_snsr.h>
+
 #include <linux/cvi_comm_video.h>
-#endif
 #include "cvi_sns_ctrl.h"
 #include "ov5647_cmos_ex.h"
 
 static void ov5647_linear_1080p30_init(VI_PIPE ViPipe);
+static void ov5647_linear_2592x1944p15_init(VI_PIPE ViPipe);
 
 CVI_U8 ov5647_i2c_addr = 0x36;        /* I2C Address of OV5647 */
 const CVI_U32 ov5647_addr_byte = 2;
@@ -102,7 +98,7 @@ int ov5647_read_register(VI_PIPE ViPipe, int addr)
 		data = buf[0];
 	}
 
-	// syslog(LOG_DEBUG, "i2c r 0x%x = 0x%x\n", addr, data);
+	syslog(LOG_DEBUG, "i2c r 0x%x = 0x%x\n", addr, data);
 
 	return data;
 }
@@ -133,7 +129,7 @@ int ov5647_write_register(VI_PIPE ViPipe, int addr, int data)
 		CVI_TRACE_SNS(CVI_DBG_ERR, "I2C_WRITE error!\n");
 		return CVI_FAILURE;
 	}
-	// syslog(LOG_DEBUG, "i2c w 0x%x 0x%x\n", addr, data);
+	syslog(LOG_DEBUG, "i2c w 0x%x 0x%x\n", addr, data);
 	return CVI_SUCCESS;
 }
 
@@ -229,7 +225,10 @@ void ov5647_init(VI_PIPE ViPipe)
 
 	delay_ms(10);
 
-	ov5647_linear_1080p30_init(ViPipe);
+	if (g_pastOv5647[ViPipe]->u8ImgMode == OV5647_MODE_2592X1944P15)
+		ov5647_linear_2592x1944p15_init(ViPipe);
+	else
+		ov5647_linear_1080p30_init(ViPipe);
 
 	g_pastOv5647[ViPipe]->bInit = CVI_TRUE;
 }
@@ -339,6 +338,121 @@ static void ov5647_linear_1080p30_init(VI_PIPE ViPipe)
 	delay_ms(100);
 
 	printf("ViPipe:%d,===OV5647 1080P 30fps 10bit LINE Init OK!\n", ViPipe);
+}
+
+/* 2592X1944P15: full-resolution mode. Window/timing/banding regs ported from
+ * the mainline Linux driver (ov5647_2592x1944_10bpp); the clock tree is the
+ * SDK's own 1080p configuration (24MHz xvclk), which is the only one proven
+ * to lock the PLL and produce MIPI output on this board — the mainline tree
+ * (0x3036=0x69 for a 25MHz xvclk) yields a completely silent MIPI RX here. */
+static void ov5647_linear_2592x1944p15_init(VI_PIPE ViPipe)
+{
+	ov5647_write_register(ViPipe, 0x0100, 0x00);
+	ov5647_write_register(ViPipe, 0x0103, 0x01);
+	/* SDK clock tree (proven to lock the PLL and stream on this board;
+	 * the mainline tree with 0x3036=0x69 produces no MIPI output here) */
+	ov5647_write_register(ViPipe, 0x3035, 0x11);
+	ov5647_write_register(ViPipe, 0x3036, 0x64);
+	ov5647_write_register(ViPipe, 0x303c, 0x11);
+	ov5647_write_register(ViPipe, 0x3821, 0x00);
+	ov5647_write_register(ViPipe, 0x3820, 0x00);
+	ov5647_write_register(ViPipe, 0x370c, 0x0f);
+	ov5647_write_register(ViPipe, 0x3612, 0x5b);
+	ov5647_write_register(ViPipe, 0x3618, 0x04);
+	ov5647_write_register(ViPipe, 0x5000, 0x06);
+	ov5647_write_register(ViPipe, 0x5002, 0x40);
+	ov5647_write_register(ViPipe, 0x5003, 0x08);
+	ov5647_write_register(ViPipe, 0x5a00, 0x08);
+	ov5647_write_register(ViPipe, 0x3000, 0xff);
+	ov5647_write_register(ViPipe, 0x3001, 0xff);
+	ov5647_write_register(ViPipe, 0x3002, 0xff);
+	ov5647_write_register(ViPipe, 0x301d, 0xf0);
+	ov5647_write_register(ViPipe, 0x3503, 0x07);
+	ov5647_write_register(ViPipe, 0x3a18, 0x00);
+	ov5647_write_register(ViPipe, 0x3a19, 0xf8);
+	ov5647_write_register(ViPipe, 0x3c01, 0x80);
+	ov5647_write_register(ViPipe, 0x3b07, 0x0c);
+	/* HTS 2844, VTS 1968 (mainline values; pclk ~84M at 24M xvclk -> ~15fps) */
+	ov5647_write_register(ViPipe, 0x380c, 0x0b);
+	ov5647_write_register(ViPipe, 0x380d, 0x1c);
+	ov5647_write_register(ViPipe, 0x380e, 0x07);
+	ov5647_write_register(ViPipe, 0x380f, 0xb0);
+	ov5647_write_register(ViPipe, 0x3814, 0x11);
+	ov5647_write_register(ViPipe, 0x3815, 0x11);
+	ov5647_write_register(ViPipe, 0x3708, 0x64);
+	ov5647_write_register(ViPipe, 0x3709, 0x12);
+	/* DVP/MIPO output size 2592x1944 */
+	ov5647_write_register(ViPipe, 0x3808, 0x0a);
+	ov5647_write_register(ViPipe, 0x3809, 0x20);
+	ov5647_write_register(ViPipe, 0x380a, 0x07);
+	ov5647_write_register(ViPipe, 0x380b, 0x98);
+	/* crop full array: X/Y start 0, X end 2623, Y end 1955 */
+	ov5647_write_register(ViPipe, 0x3800, 0x00);
+	ov5647_write_register(ViPipe, 0x3801, 0x00);
+	ov5647_write_register(ViPipe, 0x3802, 0x00);
+	ov5647_write_register(ViPipe, 0x3803, 0x00);
+	ov5647_write_register(ViPipe, 0x3804, 0x0a);
+	ov5647_write_register(ViPipe, 0x3805, 0x3f);
+	ov5647_write_register(ViPipe, 0x3806, 0x07);
+	ov5647_write_register(ViPipe, 0x3807, 0xa3);
+	/* sub-sample offsets for full FOV */
+	ov5647_write_register(ViPipe, 0x3811, 0x10);
+	ov5647_write_register(ViPipe, 0x3813, 0x06);
+	ov5647_write_register(ViPipe, 0x3630, 0x2e);
+	ov5647_write_register(ViPipe, 0x3632, 0xe2);
+	ov5647_write_register(ViPipe, 0x3633, 0x23);
+	ov5647_write_register(ViPipe, 0x3634, 0x44);
+	ov5647_write_register(ViPipe, 0x3620, 0x64);
+	ov5647_write_register(ViPipe, 0x3621, 0xe0);
+	ov5647_write_register(ViPipe, 0x3600, 0x37);
+	ov5647_write_register(ViPipe, 0x3704, 0xa0);
+	ov5647_write_register(ViPipe, 0x3703, 0x5a);
+	ov5647_write_register(ViPipe, 0x3715, 0x78);
+	ov5647_write_register(ViPipe, 0x3717, 0x01);
+	ov5647_write_register(ViPipe, 0x3731, 0x02);
+	ov5647_write_register(ViPipe, 0x370b, 0x60);
+	ov5647_write_register(ViPipe, 0x3705, 0x1a);
+	ov5647_write_register(ViPipe, 0x3f05, 0x02);
+	ov5647_write_register(ViPipe, 0x3f06, 0x10);
+	ov5647_write_register(ViPipe, 0x3f01, 0x0a);
+	ov5647_write_register(ViPipe, 0x3a08, 0x01);
+	/* 50Hz banding 0x28/0x00f6, 60Hz banding 0x08/0x06 */
+	ov5647_write_register(ViPipe, 0x3a09, 0x28);
+	ov5647_write_register(ViPipe, 0x3a0a, 0x00);
+	ov5647_write_register(ViPipe, 0x3a0b, 0xf6);
+	ov5647_write_register(ViPipe, 0x3a0d, 0x08);
+	ov5647_write_register(ViPipe, 0x3a0e, 0x06);
+	ov5647_write_register(ViPipe, 0x3a0f, 0x58);
+	ov5647_write_register(ViPipe, 0x3a10, 0x50);
+	ov5647_write_register(ViPipe, 0x3a1b, 0x58);
+	ov5647_write_register(ViPipe, 0x3a1e, 0x50);
+	ov5647_write_register(ViPipe, 0x3a11, 0x60);
+	ov5647_write_register(ViPipe, 0x3a1f, 0x28);
+	ov5647_write_register(ViPipe, 0x4001, 0x02);
+	ov5647_write_register(ViPipe, 0x4004, 0x04);
+	ov5647_write_register(ViPipe, 0x4000, 0x09);
+	ov5647_write_register(ViPipe, 0x4050, 0x6e);
+	ov5647_write_register(ViPipe, 0x4051, 0x8f);
+	ov5647_write_register(ViPipe, 0x0100, 0x01);
+	ov5647_write_register(ViPipe, 0x3000, 0x00);
+	ov5647_write_register(ViPipe, 0x3001, 0x00);
+	ov5647_write_register(ViPipe, 0x3002, 0x00);
+	ov5647_write_register(ViPipe, 0x3017, 0xe0);
+	ov5647_write_register(ViPipe, 0x301c, 0xfc);
+	ov5647_write_register(ViPipe, 0x3636, 0x06);
+	ov5647_write_register(ViPipe, 0x3016, 0x08);
+	ov5647_write_register(ViPipe, 0x3827, 0xec);
+	ov5647_write_register(ViPipe, 0x3018, 0x44);
+	ov5647_write_register(ViPipe, 0x3035, 0x21);
+	ov5647_write_register(ViPipe, 0x3106, 0xf5);
+	ov5647_write_register(ViPipe, 0x3034, 0x1a);
+	ov5647_write_register(ViPipe, 0x301c, 0xf8);
+
+	ov5647_default_reg_init(ViPipe);
+
+	delay_ms(100);
+
+	printf("ViPipe:%d,===OV5647 2592X1944 15fps 10bit LINE Init OK!\n", ViPipe);
 }
 
 
