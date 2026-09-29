@@ -1,0 +1,23 @@
+#!/bin/sh
+# node-red diagnostic wrapper v7 (2026-09): stderr capture + exit code + core dump
+# - captures node-red stdout/stderr to /userdata/log/node-red.log (rotates at 4MB)
+# - records START/CHILD/EXITED rc=N markers for post-mortem
+# - enables core dumps (unlimited), keeps only 2 newest cores
+# - writes child pid to pidfile so S92 stop signals the node process directly
+# NOTE: no traps (busybox ash trap+wait bug), poll loop instead (canary-proven)
+LOG=/userdata/log/node-red.log
+mkdir -p /userdata/log /userdata/cores 2>/dev/null
+s=$(wc -c < "$LOG" 2>/dev/null || echo 0)
+[ "$s" -gt 4000000 ] && { tail -c 1000000 "$LOG" > "$LOG.tmp" 2>/dev/null && mv "$LOG.tmp" "$LOG"; }
+ls -t /userdata/cores/core.* 2>/dev/null | tail -n +3 | xargs rm -f 2>/dev/null
+echo "=== node-red-logged START wrapper_pid=$$ $(date) ===" >> "$LOG"
+ulimit -c unlimited
+/usr/bin/node-red-pi "$@" >> "$LOG" 2>&1 &
+child=$!
+echo "$child" > /tmp/node-red/pid
+echo "=== node-red-logged CHILD pid=$child $(date) ===" >> "$LOG"
+while kill -0 $child 2>/dev/null; do sleep 2; done
+wait $child
+rc=$?
+echo "=== node-red pid=$child EXITED rc=$rc $(date) ===" >> "$LOG"
+ls -la /userdata/cores/ 2>/dev/null | tail -3 >> "$LOG"

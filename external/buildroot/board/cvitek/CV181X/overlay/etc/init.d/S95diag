@@ -1,0 +1,28 @@
+#!/bin/sh
+# S95diag: enable node-red crash diagnostics at boot
+# - core_pattern -> /userdata/cores (persistent partition)
+# - start nrwatch health monitor
+
+start() {
+    echo "Starting node-red diagnostics"
+    mkdir -p /userdata/cores /userdata/log
+    chmod 777 /userdata/cores 2>/dev/null
+    echo "/userdata/cores/core.%e.%p" > /proc/sys/kernel/core_pattern 2>/dev/null
+    start-stop-daemon -S -q -b -m -p /var/run/nrwatch.pid --exec /bin/sh -- /usr/local/bin/nrwatch.sh
+    echo "OK"
+}
+
+stop() {
+    echo "Stopping node-red diagnostics"
+    start-stop-daemon -K -q -p /var/run/nrwatch.pid
+    rm -f /var/run/nrwatch.pid
+    echo "OK"
+}
+
+case "$1" in
+    start) start ;;
+    stop) stop ;;
+    restart) stop; start ;;
+    *) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac
+exit 0
