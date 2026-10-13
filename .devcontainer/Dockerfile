@@ -14,8 +14,15 @@ RUN if [ "$VARIANT" = "noble" ]; then \
 
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 
-RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-    && apt-get -y install --no-install-recommends \
+# archive.ubuntu.com 走代理时出口节点不稳定(瞬时 404/断连),换国内 HTTPS 镜像
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
+        sed -i 's|http://archive.ubuntu.com/ubuntu|https://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources; \
+    fi; \
+    [ -s /etc/apt/sources.list ] && sed -i 's|http://archive.ubuntu.com/ubuntu|https://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list || true
+
+RUN apt-get -o Acquire::Retries=5 update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get -o Acquire::Retries=5 -y install --no-install-recommends \
     build-essential \
     ninja-build \
     automake \
@@ -66,4 +73,4 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     pkg-config \
     xxd \
     zip \
- && ln -sf /usr/bin/python3 /usr/local/bin/python || true
+ && ln -sf /usr/bin/python3 /usr/local/bin/python

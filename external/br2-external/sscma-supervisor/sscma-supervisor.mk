@@ -4,8 +4,12 @@
 #
 ################################################################################
 
-SSCMA_SUPERVISOR_VERSION = 0.2.4
-SSCMA_SUPERVISOR_SITE = https://github.com/Seeed-Studio/sscma-example-sg200x
+# CHGP97 fork of sscma-example-sg200x, pinned on fix/ae-feedback:
+# 98201f6 fixes start_service "nodered" to call S92node-red (reCamera-OS
+# 7118b9e renamed the init script; upstream 0.2.4 still calls S03 and
+# leaves node-red killed on every web-UI service toggle)
+SSCMA_SUPERVISOR_VERSION = 98201f6a72dfa469358f57fe2e5eeb617d88da5a
+SSCMA_SUPERVISOR_SITE = https://github.com/CHGP97/sscma-example-sg200x.git
 SSCMA_SUPERVISOR_SITE_METHOD = git
 SSCMA_SUPERVISOR_GIT_SUBMODULES = YES
 SSCMA_SUPERVISOR_LICENSE = Apache-2.0
